@@ -19,7 +19,8 @@ jobs:
           C=$(echo "$V" | jq -r .code); N=$(echo "$V" | jq -r .name); S=$(echo "$V" | jq -r .size)
           [ "$C" -gt 0 ] || { echo "no version"; exit 1; }
           gh release view android -R "$REPO" >/dev/null 2>&1 || gh release create android -R "$REPO" -t "Family IPTV Player for Android" -n "Download: https://familyiptvplayer.com — the app is a player only and contains no channels."
-          if gh release view android -R "$REPO" --json assets -q '.assets[].name' | grep -qx "app-$C.apk"; then echo "app-$C.apk already here"; exit 0; fi
+          HAVE=$(gh release view android -R "$REPO" --json assets -q '.assets[].name')
+          if echo "$HAVE" | grep -qx "app-$C.apk" && echo "$HAVE" | grep -qx "app-lite-$C.apk"; then echo "version $C already here"; exit 0; fi
           curl -fsSL -o "app-$C.apk" "https://familyiptvplayer.com/dl/app.apk?v=$C"
           curl -fsSL -o "app-lite-$C.apk" "https://familyiptvplayer.com/dl/app-lite.apk?v=$C" || rm -f "app-lite-$C.apk"
           [ "$(stat -c%s "app-$C.apk")" = "$S" ] || { echo "size differs from version.json, try later"; exit 0; }
