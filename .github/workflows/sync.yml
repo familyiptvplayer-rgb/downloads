@@ -21,10 +21,11 @@ jobs:
           gh release view android -R "$REPO" >/dev/null 2>&1 || gh release create android -R "$REPO" -t "Family IPTV Player for Android" -n "Download: https://familyiptvplayer.com — the app is a player only and contains no channels."
           if gh release view android -R "$REPO" --json assets -q '.assets[].name' | grep -qx "app-$C.apk"; then echo "app-$C.apk already here"; exit 0; fi
           curl -fsSL -o "app-$C.apk" "https://familyiptvplayer.com/dl/app.apk?v=$C"
-          curl -fsSL -o "app-lite-$C.apk" "https://familyiptvplayer.com/dl/app-lite.apk?v=$C"
+          curl -fsSL -o "app-lite-$C.apk" "https://familyiptvplayer.com/dl/app-lite.apk?v=$C" || rm -f "app-lite-$C.apk"
           [ "$(stat -c%s "app-$C.apk")" = "$S" ] || { echo "size differs from version.json, try later"; exit 0; }
-          unzip -tq "app-$C.apk" >/dev/null && unzip -tq "app-lite-$C.apk" >/dev/null
-          gh release upload android -R "$REPO" --clobber "app-lite-$C.apk" "app-$C.apk"
+          unzip -tq "app-$C.apk" >/dev/null
+          [ -f "app-lite-$C.apk" ] && ! unzip -tq "app-lite-$C.apk" >/dev/null && rm -f "app-lite-$C.apk"
+          gh release upload android -R "$REPO" --clobber "app-$C.apk" $(ls app-lite-$C.apk 2>/dev/null)
           # keep only the last 3 versions
           gh release view android -R "$REPO" --json assets -q '.assets[].name' | grep -E '^app-[0-9]+\.apk$' | sed 's/app-//; s/\.apk//' | sort -n | head -n -3 | while read o; do
             gh release delete-asset android "app-$o.apk" -R "$REPO" -y || true; gh release delete-asset android "app-lite-$o.apk" -R "$REPO" -y || true; done
