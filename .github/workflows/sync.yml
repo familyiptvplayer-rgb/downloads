@@ -1,0 +1,35 @@
+# Copies the newest Android app from familyiptvplayer.com into this repo's "android" release, so the
+# website can hand out downloads from GitHub (no traffic cost). The website keeps its own copy as backup.
+name: Sync Android app
+on:
+  schedule: [{ cron: '*/15 * * * *' }]
+  workflow_dispatch:
+permissions: { contents: write }
+concurrency: { group: sync, cancel-in-progress: false }
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env: { GH_TOKEN: '${{ github.token }}', REPO: '${{ github.repository }}' }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy the new version (if any)
+        run: |
+          set -e
+          V=$(curl -fsSL "https://familyiptvplayer.com/dl/version.json?x=$(date +%s)")
+          C=$(echo "$V" | jq -r .code); N=$(echo "$V" | jq -r .name); S=$(echo "$V" | jq -r .size)
+          [ "$C" -gt 0 ] || { echo "no version"; exit 1; }
+          gh release view android -R "$REPO" >/dev/null 2>&1 || gh release create android -R "$REPO" -t "Family IPTV Player for Android" -n "Download: https://familyiptvplayer.com — the app is a player only and contains no channels."
+          if gh release view android -R "$REPO" --json assets -q '.assets[].name' | grep -qx "app-$C.apk"; then echo "app-$C.apk already here"; exit 0; fi
+          curl -fsSL -o "app-$C.apk" "https://familyiptvplayer.com/dl/app.apk?v=$C"
+          curl -fsSL -o "app-lite-$C.apk" "https://familyiptvplayer.com/dl/app-lite.apk?v=$C"
+          [ "$(stat -c%s "app-$C.apk")" = "$S" ] || { echo "size differs from version.json, try later"; exit 0; }
+          unzip -tq "app-$C.apk" >/dev/null && unzip -tq "app-lite-$C.apk" >/dev/null
+          gh release upload android -R "$REPO" --clobber "app-lite-$C.apk" "app-$C.apk"
+          # keep only the last 3 versions
+          gh release view android -R "$REPO" --json assets -q '.assets[].name' | grep -E '^app-[0-9]+\.apk$' | sed 's/app-//; s/\.apk//' | sort -n | head -n -3 | while read o; do
+            gh release delete-asset android "app-$o.apk" -R "$REPO" -y || true; gh release delete-asset android "app-lite-$o.apk" -R "$REPO" -y || true; done
+          gh release edit android -R "$REPO" -t "Family IPTV Player for Android $N"
+          # a commit keeps the scheduled workflow alive (GitHub pauses schedules in repos with no activity)
+          echo "$N ($C)" > VERSION.txt
+          git config user.name "familyiptvplayer-bot"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION.txt && git commit -m "Android $N ($C)" && git push || true
